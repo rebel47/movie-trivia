@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
 import random
+import json
+import os
 
-# Load data
 movies_df = pd.read_csv("movies.csv")
 movies_df.dropna(subset=["Director", "Star1", "IMDB_Rating", "Released_Year", "Gross"], inplace=True)
 
-# Set Streamlit page config
 st.set_page_config(page_title="🎬 Movie Facts & Trivia Game", layout="wide")
 
 # --- SESSION STATE INIT ---
@@ -20,6 +20,23 @@ for key, default in {
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
+
+# --- LEADERBOARD PERSISTENCE ---
+LEADERBOARD_FILE = "leaderboard.json"
+
+def load_leaderboard():
+    if os.path.exists(LEADERBOARD_FILE):
+        with open(LEADERBOARD_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_leaderboard(leaderboard):
+    with open(LEADERBOARD_FILE, "w") as f:
+        json.dump(leaderboard, f)
+
+# Loading leaderboard at the start
+if "leaderboard" not in st.session_state or not st.session_state.leaderboard:
+    st.session_state.leaderboard = load_leaderboard()
 
 # --- QUESTION GENERATION LOGIC ---
 def get_options(column, correct_answer):
@@ -80,9 +97,10 @@ def generate_questions(n=10):
 # --- SIDEBAR ---
 with st.sidebar:
     st.header("📋 Player Info")
-    if st.button("Switch Player"):
+    if st.button("New Player"):
         for key in ["name", "question_index", "score", "questions", "answer_selected"]:
-            st.session_state[key] = "" if key == "name" else 0 if key == "question_index" or key == "score" else []
+            st.session_state[key] = "" if key == "name" else 0 if key in ["question_index", "score"] else []
+        st.session_state.questions = generate_questions(10)
 
     if st.session_state.name == "":
         st.session_state.name = st.text_input("Enter your name to start the game:")
@@ -90,15 +108,22 @@ with st.sidebar:
     if st.session_state.name and st.session_state.question_index == 0 and not st.session_state.questions:
         st.session_state.questions = generate_questions(10)
 
+    st.markdown(f"**Current Player:** {st.session_state.name}")
     st.markdown("---")
     st.header("🏆 Leaderboard")
     if st.session_state.leaderboard:
-        for player, score in sorted(st.session_state.leaderboard.items(), key=lambda x: -x[1]):
+        top_players = sorted(st.session_state.leaderboard.items(), key=lambda x: -x[1])[:10]
+        for player, score in top_players:
             st.markdown(f"**{player}**: {score} pts")
     else:
         st.caption("No players yet. Be the first to play!")
 
-# --- MAIN GAME UI ---
+    if st.button("🔄 Refresh Leaderboard"):
+        st.session_state.leaderboard = {}
+        save_leaderboard(st.session_state.leaderboard)
+        st.rerun()
+
+# --- UI ---
 if not st.session_state.name:
     st.warning("Please enter your name in the sidebar to begin.")
     st.stop()
@@ -117,17 +142,12 @@ with st.container():
             selected_option = st.radio("Choose your answer:", q["options"], index=None, key=f"q_{st.session_state.question_index}")
 
             if st.button("🎯 Submit Answer"):
-                if selected_option is None:
-                    st.warning("Please select an answer before submitting.")
-                else:
+                if selected_option is not None:
                     st.session_state.answer_selected = selected_option
                     if selected_option == q["answer"]:
-                        st.success("✅ Correct!")
                         st.session_state.score += 1
-                    else:
-                        st.error(f"❌ Incorrect. The correct answer was: **{q['answer']}**")
-                    st.session_state.question_index += 1
-                    st.rerun()
+                st.session_state.question_index += 1
+                st.rerun()
 
         else:
             st.balloons()
@@ -136,15 +156,18 @@ with st.container():
 
             # Update leaderboard
             st.session_state.leaderboard[st.session_state.name] = st.session_state.score
+            save_leaderboard(st.session_state.leaderboard)
 
             col_play, col_new = st.columns(2)
             with col_play:
                 if st.button("🔁 Play Again"):
                     for key in ["question_index", "score", "questions", "answer_selected"]:
-                        st.session_state[key] = 0 if key == "question_index" or key == "score" else []
+                        st.session_state[key] = 0 if key in ["question_index", "score"] else []
+                    st.session_state.questions = generate_questions(10)
                     st.rerun()
             with col_new:
                 if st.button("🙋 New Player"):
                     for key in ["name", "question_index", "score", "questions", "answer_selected"]:
-                        st.session_state[key] = "" if key == "name" else 0 if key == "question_index" or key == "score" else []
+                        st.session_state[key] = "" if key == "name" else 0 if key in ["question_index", "score"] else []
+                    st.session_state.questions = generate_questions(10)
                     st.rerun()
