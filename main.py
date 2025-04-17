@@ -96,7 +96,7 @@ def generate_questions(n=10):
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.header("📋 Player Info")
+    st.header("📋 Game Info")
     if st.button("New Player"):
         for key in ["name", "question_index", "score", "questions", "answer_selected"]:
             st.session_state[key] = "" if key == "name" else 0 if key in ["question_index", "score"] else []
